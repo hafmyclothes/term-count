@@ -1,6 +1,7 @@
 import re
 import io
 import collections
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,192 +15,145 @@ except ImportError:
 
 
 DEFAULT_STOPWORDS = {
-    "a","an","the","and","or","but","if","in","on","at","to","for","of",
-    "with","by","from","up","about","into","through","is","are","was",
-    "were","be","been","being","have","has","had","do","does","did",
-    "will","would","could","should","may","might","shall","can",
-    "i","me","my","we","our","you","your","he","she","it","they",
-    "them","their","this","that","these","those","not","no","so",
-    "as","than","then","also","just","more","s","t","re","ve","ll"
+    "a","an","the","and","or","but","if","in","on","at","to",
+    "for","of","with","by","from","up","about","into","through",
+    "is","are","was","were","be","been","being","have","has",
+    "had","do","does","did","will","would","could","should",
+    "may","might","shall","can",
+    "i","me","my","we","our","you","your","he","she","it",
+    "they","them","their","this","that","these","those",
+    "not","no","so","as","than","then","also","just","more",
+    "s","t","re","ve","ll"
 }
 
 st.set_page_config(page_title="Word Frequency Analyzer", layout="wide")
 
-# ====================== FUNCTIONS ======================
+# ================= FUNCTIONS =================
 
-def extract_text_from_txt(file_bytes):
+def extract_text_txt(b):
     try:
-        return file_bytes.decode("utf-8")
+        return b.decode("utf-8")
     except:
-        return file_bytes.decode("latin-1")
+        return b.decode("latin-1")
 
-def extract_text_from_docx(file_bytes):
-    doc = Document(io.BytesIO(file_bytes))
+def extract_text_docx(b):
+    doc = Document(io.BytesIO(b))
     return "\n".join(p.text for p in doc.paragraphs)
 
-def extract_text_generic(uploaded):
-    bytes_data = uploaded.read()
-    ext = uploaded.name.split(".")[-1].lower()
-    if ext == "txt":
-        return extract_text_from_txt(bytes_data)
-    if ext == "docx":
-        return extract_text_from_docx(bytes_data)
-    return ""
-
 def tokenize(text):
-    text = text.lower()
-    return re.findall(r"[a-z]+", text)
+    return re.findall(r"[a-z]+", text.lower())
 
 def count_words(tokens, stopwords, min_len):
     filtered = [w for w in tokens if w not in stopwords and len(w) >= min_len]
     counter = collections.Counter(filtered)
-    df = pd.DataFrame(counter.most_common(), columns=["คำ","จำนวนครั้ง"])
-    return df
+    return pd.DataFrame(counter.most_common(), columns=["Word","Freq"])
 
-def plot_chart(df, top_n, color, chart_type):
+def plot_chart(df, top_n, color, chart_type, theme):
 
     data = df.head(top_n)
 
+    if theme == "Dark":
+        bg = "#111111"
+        fg = "white"
+        grid = "#333333"
+    else:
+        bg = "white"
+        fg = "black"
+        grid = "#dddddd"
+
     fig, ax = plt.subplots(figsize=(10,6))
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
 
     if chart_type == "Horizontal Bar":
         data = data.iloc[::-1]
-        ax.barh(data["คำ"], data["จำนวนครั้ง"], color=color)
+        ax.barh(data["Word"], data["Freq"], color=color)
 
     elif chart_type == "Vertical Bar":
-        ax.bar(data["คำ"], data["จำนวนครั้ง"], color=color)
+        ax.bar(data["Word"], data["Freq"], color=color)
         plt.xticks(rotation=60)
 
     elif chart_type == "Pie":
-        ax.pie(
-            data["จำนวนครั้ง"],
-            labels=data["คำ"],
-            autopct="%1.1f%%"
-        )
+        ax.pie(data["Freq"], labels=data["Word"], autopct="%1.1f%%",
+               textprops={"color": fg})
 
     elif chart_type == "Line":
-        ax.plot(data["คำ"], data["จำนวนครั้ง"], marker="o")
+        ax.plot(data["Word"], data["Freq"], marker="o", color=color)
         plt.xticks(rotation=60)
 
     elif chart_type == "Area":
-        ax.fill_between(data["คำ"], data["จำนวนครั้ง"], alpha=0.4)
+        ax.fill_between(data["Word"], data["Freq"], alpha=0.4, color=color)
         plt.xticks(rotation=60)
 
     elif chart_type == "Histogram":
-        ax.hist(df["จำนวนครั้ง"], bins=15)
+        ax.hist(df["Freq"], bins=20, color=color)
 
-    ax.set_title(f"Top {top_n} Word Visualization")
+    ax.set_title(f"Top {top_n} Word Visualization", color=fg)
+    ax.tick_params(colors=fg)
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    ax.grid(color=grid, linestyle="--", alpha=0.5)
+
     plt.tight_layout()
     return fig
 
-def build_compare(df_src, df_trg):
-    merged = pd.merge(
-        df_src,
-        df_trg,
-        on="คำ",
-        how="outer",
-        suffixes=("_ต้นฉบับ","_แปล")
-    ).fillna(0)
 
-    merged["diff"] = merged["จำนวนครั้ง_แปล"] - merged["จำนวนครั้ง_ต้นฉบับ"]
-    merged = merged.sort_values("diff", ascending=False)
-    return merged
-
-def lexical_div(tokens, df):
-    if len(tokens) == 0:
-        return 0
-    return len(df)/len(tokens)
-
-# ====================== SIDEBAR ======================
+# ================= SIDEBAR =================
 
 with st.sidebar:
     st.header("Settings")
+
+    theme = st.selectbox("Theme", ["Dark","Light"])
+
     top_n = st.slider("Top N",5,50,20)
     min_len = st.slider("Min word length",1,6,2)
     color = st.color_picker("Chart color","#f4b942")
 
     chart_type = st.selectbox(
         "Chart type",
-        ["Horizontal Bar","Vertical Bar","Pie","Line","Area","Histogram"]
+        [
+            "Horizontal Bar",
+            "Vertical Bar",
+            "Pie",
+            "Line",
+            "Area",
+            "Histogram"
+        ]
     )
 
     extra = st.text_area("Extra stopwords")
-    extra_sw = set(extra.lower().split())
-    stopwords = DEFAULT_STOPWORDS | extra_sw
+    stopwords = DEFAULT_STOPWORDS | set(extra.lower().split())
 
-# ====================== HEADER ======================
+# ================= UI =================
 
 st.title("📖 Word Frequency Analyzer")
-st.caption("Tool for translators & linguistic analysis")
 
-# ====================== COMPARE MODE ======================
-
-st.divider()
-st.header("🔬 Compare Translation")
-
-c1, c2 = st.columns(2)
-
-with c1:
-    src_file = st.file_uploader("Upload SOURCE", type=["txt","docx"], key="src")
-
-with c2:
-    trg_file = st.file_uploader("Upload TRANSLATION", type=["txt","docx"], key="trg")
-
-if src_file and trg_file:
-
-    raw_src = extract_text_generic(src_file)
-    raw_trg = extract_text_generic(trg_file)
-
-    tok_src = tokenize(raw_src)
-    tok_trg = tokenize(raw_trg)
-
-    df_src = count_words(tok_src, stopwords, min_len)
-    df_trg = count_words(tok_trg, stopwords, min_len)
-
-    cmp_df = build_compare(df_src, df_trg)
-
-    st.subheader("Translation Metrics")
-
-    ratio = len(tok_trg)/len(tok_src) if len(tok_src)>0 else 0
-    lex_src = lexical_div(tok_src, df_src)
-    lex_trg = lexical_div(tok_trg, df_trg)
-
-    m1,m2,m3,m4 = st.columns(4)
-    m1.metric("Source words", len(tok_src))
-    m2.metric("Translated words", len(tok_trg))
-    m3.metric("Expansion Ratio", f"{ratio:.2f}")
-    m4.metric("Lexical richness Δ", f"{lex_trg-lex_src:.3f}")
-
-    st.subheader("Words Over-used in Translation")
-    st.dataframe(cmp_df.head(top_n), use_container_width=True)
-
-    st.subheader("Words Reduced / Missing")
-    st.dataframe(cmp_df.tail(top_n).sort_values("diff"), use_container_width=True)
-
-    csv = cmp_df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("Download Compare CSV", csv, "compare.csv")
-
-# ====================== SINGLE FILE MODE ======================
-
-st.divider()
-st.header("📂 Analyze Single Document")
-
-file = st.file_uploader("Upload file", type=["txt","docx"], key="single")
+file = st.file_uploader("Upload .txt or .docx")
 
 if file:
 
-    raw = extract_text_generic(file)
-    tokens = tokenize(raw)
+    bytes_data = file.read()
+    ext = file.name.split(".")[-1].lower()
+
+    if ext == "txt":
+        text = extract_text_txt(bytes_data)
+    else:
+        text = extract_text_docx(bytes_data)
+
+    tokens = tokenize(text)
     df = count_words(tokens, stopwords, min_len)
 
-    st.metric("Total tokens", len(tokens))
-    st.metric("Unique words", len(df))
+    c1,c2 = st.columns(2)
+    c1.metric("Total tokens", len(tokens))
+    c2.metric("Unique words", len(df))
 
-    fig = plot_chart(df, top_n, color, chart_type)
+    fig = plot_chart(df, top_n, color, chart_type, theme)
     st.pyplot(fig)
     plt.close(fig)
 
     st.dataframe(df.head(top_n), use_container_width=True)
 
     csv = df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("Download CSV", csv, "freq.csv")
+    st.download_button("Download CSV", csv, "word_freq.csv")
