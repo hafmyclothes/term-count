@@ -23,10 +23,7 @@ DEFAULT_STOPWORDS = {
     "as","than","then","also","just","more","s","t","re","ve","ll"
 }
 
-st.set_page_config(
-    page_title="Word Frequency Analyzer",
-    layout="wide"
-)
+st.set_page_config(page_title="Word Frequency Analyzer", layout="wide")
 
 # ====================== FUNCTIONS ======================
 
@@ -59,11 +56,40 @@ def count_words(tokens, stopwords, min_len):
     df = pd.DataFrame(counter.most_common(), columns=["คำ","จำนวนครั้ง"])
     return df
 
-def plot_chart(df, top_n, color):
-    data = df.head(top_n).iloc[::-1]
+def plot_chart(df, top_n, color, chart_type):
+
+    data = df.head(top_n)
+
     fig, ax = plt.subplots(figsize=(10,6))
-    ax.barh(data["คำ"], data["จำนวนครั้ง"], color=color)
-    ax.set_title(f"Top {top_n} Words")
+
+    if chart_type == "Horizontal Bar":
+        data = data.iloc[::-1]
+        ax.barh(data["คำ"], data["จำนวนครั้ง"], color=color)
+
+    elif chart_type == "Vertical Bar":
+        ax.bar(data["คำ"], data["จำนวนครั้ง"], color=color)
+        plt.xticks(rotation=60)
+
+    elif chart_type == "Pie":
+        ax.pie(
+            data["จำนวนครั้ง"],
+            labels=data["คำ"],
+            autopct="%1.1f%%"
+        )
+
+    elif chart_type == "Line":
+        ax.plot(data["คำ"], data["จำนวนครั้ง"], marker="o")
+        plt.xticks(rotation=60)
+
+    elif chart_type == "Area":
+        ax.fill_between(data["คำ"], data["จำนวนครั้ง"], alpha=0.4)
+        plt.xticks(rotation=60)
+
+    elif chart_type == "Histogram":
+        ax.hist(df["จำนวนครั้ง"], bins=15)
+
+    ax.set_title(f"Top {top_n} Word Visualization")
+    plt.tight_layout()
     return fig
 
 def build_compare(df_src, df_trg):
@@ -84,7 +110,6 @@ def lexical_div(tokens, df):
         return 0
     return len(df)/len(tokens)
 
-
 # ====================== SIDEBAR ======================
 
 with st.sidebar:
@@ -93,10 +118,14 @@ with st.sidebar:
     min_len = st.slider("Min word length",1,6,2)
     color = st.color_picker("Chart color","#f4b942")
 
+    chart_type = st.selectbox(
+        "Chart type",
+        ["Horizontal Bar","Vertical Bar","Pie","Line","Area","Histogram"]
+    )
+
     extra = st.text_area("Extra stopwords")
     extra_sw = set(extra.lower().split())
     stopwords = DEFAULT_STOPWORDS | extra_sw
-
 
 # ====================== HEADER ======================
 
@@ -150,7 +179,6 @@ if src_file and trg_file:
     csv = cmp_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button("Download Compare CSV", csv, "compare.csv")
 
-
 # ====================== SINGLE FILE MODE ======================
 
 st.divider()
@@ -167,8 +195,9 @@ if file:
     st.metric("Total tokens", len(tokens))
     st.metric("Unique words", len(df))
 
-    fig = plot_chart(df, top_n, color)
+    fig = plot_chart(df, top_n, color, chart_type)
     st.pyplot(fig)
+    plt.close(fig)
 
     st.dataframe(df.head(top_n), use_container_width=True)
 
